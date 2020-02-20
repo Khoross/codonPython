@@ -68,6 +68,16 @@ codonPython.nhsd\_colours module
    :undoc-members:
    :show-inheritance:
 
+codonPython.mesh module
+-----------------------
+.. automodule:: codonPython.mesh
+   :members:
+   :imported-members:
+   :no-undoc-members:
+   :exclude-members: dataclass
+   :show-inheritance:
+   :member-order: bysource
+
 codonPython.nhsNumber module
 ----------------------------
 
@@ -77,7 +87,7 @@ codonPython.nhsNumber module
    :show-inheritance:
 
 codonPython.ODS_lookup module
-----------------------------
+-----------------------------
 
 .. automodule:: codonPython.ODS_lookup
    :members:
