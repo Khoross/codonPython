@@ -41,10 +41,10 @@ class MESHConnection:
     base_ca_loc : string
         Path to the base MESH certificate authority certificate bundle.
         Set to False to disable inbound SSL checks if necessary
-    root_url : string
+    root_url : string, default = "https://mesh-sync.national.ncrs.nhs.uk"
         Root MESH URL. Default value is the live MESH service
-    org : string
-        Organisation name. Default value NHS Digital
+    org : string, default = "NHS Digital"
+        Name of organisation owning the mailbox
     """
 
     mailbox: str
@@ -64,7 +64,7 @@ class MESHConnection:
         Returns
         ----------
         bool
-            indicates if authentication was successful or not
+            Indicates if authentication was successful or not
         
         Raises
         ----------
@@ -121,23 +121,26 @@ class MESHConnection:
             Path to the readable file to send as a message
         workflow_id : string
             DTS Workflow ID
-        message_subject : string
+        message_subject : string, default = None
             Optional subject line to use for the message, for SMTP (email) messages.
-        message_id : string
+        message_id : string, default = None
             Optional local identifier for the message. Required to track the message later.
-        process_id : string
-            Optional process ID for the MESH message. Currently not used.
-        compress_message : boolean
-            Indicates if the message should be encrypted. If true (default), then the message will be compressed
+        process_id : string, default = None
+            Optional process ID for the MESH message. Currently not used in MESH, but included to ensure
+            future compatibility.
+        compress_message : boolean, default = True
+            Indicates if the message should be compressed. If true, then the message will be compressed
             using gzip before sending to MESH.
-        encrypted : boolean
+        encrypted : boolean, default = False
             Indicates if the file to send has been encrypted. This is solely used to pass a flag to MESH
             and does not encrypt the file or otherwise alter processing.
             
         Returns
         ----------
         dict
-            key 'messageID', holding value of the MESH internal ID assigned to the sent message
+            Dictionary of returned values from the MESH API
+            
+            * messageID (str): value of the MESH internal ID assigned to the sent message
         
         Raises
         ----------
@@ -197,23 +200,26 @@ class MESHConnection:
             Original filename for the message being transmitted
         workflow_id : string
             DTS Workflow ID
-        message_subject : string
+        message_subject : string, default = None
             Optional subject line to use for the message, for SMTP (email) messages.
-        message_id : string
+        message_id : string, default = None
             Optional local identifier for the message. Required to track the message later.
-        process_id : string
-            Optional process ID for the MESH message. Currently not used.
-        compress_message : boolean
-            Indicates if the message should be encrypted. If true (default), then the message will be compressed
+        process_id : string, default = None
+            Optional process ID for the MESH message. Currently not used in MESH, but included to ensure
+            future compatibility.
+        compress_message : boolean, default = True
+            Indicates if the message should be compressed. If true, then the message will be compressed
             using gzip before sending to MESH.
-        encrypted : boolean
-            Indicates if the message being sent has been encrypted. This is solely used to pass a flag to MESH
-            and does not encrypt the message or otherwise alter processing.
+        encrypted : boolean, default = False
+            Indicates if the file to send has been encrypted. This is solely used to pass a flag to MESH
+            and does not encrypt the file or otherwise alter processing.
             
         Returns
         ----------
         dict
-            key 'messageID', holding value of the MESH internal ID assigned to the sent message
+            Dictionary of returned values from the MESH API
+            
+            * messageID (str): value of the MESH internal ID assigned to the sent message
         
         Raises
         ----------
@@ -278,7 +284,7 @@ class MESHConnection:
                 raise MESHUnknownError
             message_id = resp.json()["messageID"]
             for chunk in range(2, ceil(len(message) / 80000000) + 1):
-                self.send_message_chunk(
+                self._send_message_chunk(
                     message_id=message_id,
                     message_chunk=message[(chunk - 1) * 80000000 : chunk * 80000000],
                     chunk_no=chunk,
@@ -302,7 +308,7 @@ class MESHConnection:
 
         return resp.json()
 
-    def send_message_chunk(
+    def _send_message_chunk(
         self,
         message_id: str,
         message_chunk: bytes,
@@ -324,8 +330,8 @@ class MESHConnection:
             The number of the chunk to upload
         chunk_range : integer
             How many chunks there are to upload in total
-        compressed : boolean
-            Default True. Is the message compressed?
+        compressed : boolean, default = True
+            Is the message compressed?
         
         Raises
         ----------
@@ -337,7 +343,7 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client.send_message_chunk("20200211115754892283_BC7B68", b'test', 2)
+        >>> client._send_message_chunk("20200211115754892283_BC7B68", b'test', 2)
         """
         headers = {
             "Authorization": generate_authorization(
@@ -381,7 +387,7 @@ class MESHConnection:
         MESHAuthenticationError
             There was an authentication error accessing this page. Either the SSL certificate used is invalid,
             or the client provided the wrong Mailbox ID, Password, or Shared Key.
-        MESHMultiplematches
+        MESHMultipleMatches
             There are multiple messages in the outbox with this local ID
         MESHUnknownError
             There was an unexpected return status from the MESH API
@@ -415,132 +421,6 @@ class MESHConnection:
             raise MESHUnknownError
         return resp.json()
 
-    def check_and_download(
-        self, save_folder: str = None, recursive: bool = True
-    ) -> Union[Generator[dict, None, None], None]:
-        """
-        Download all messages in the inbox.
-        This will automatically handle reconstructing chunked messages, and automatically decompress any messages
-        which have Content-Encoding value of gzip.
-        WARNING: each downloaded message will be fully reconstructed and decompressed if needed. This may cause
-        issue for machines with very limited memory if there are very large files to download.
-        
-        If save_folder is provided, then downloaded files will be saved into that folder with their original filenames
-        (and non-delivery receipts will be saved there). This may cause issue if there are multiple files with the
-        same filename.
-        
-        If no save_folder is provided, then this function will return a generator which will yield each message in turn.
-        When the generator yields a message, it will send an acknowledgement to the MESH API for the previous
-        message; it is important that processing of the messages be complete and any required final outputs saved
-        before this - once acknowledged a message cannot be downloaded from MESH again.
-        
-        Parameters
-        ----------
-        save_folder : string
-            The folder to save the downloaded messages to. If None (default), then the files are not saved.
-            The generator will only yield outputs if save_folder is not provided
-        recursive : boolean
-            If there are more than 500 messages in the inbox, should the method call itself recursively until the inbox
-            is empty? The MESH API will only yield the first 500 messages in a call to fetch inbox contents; if set,
-            this flag will ensure all messages are handled, if unset then the first 500 will be handled.
-        
-        Yields
-        ----------
-        dict
-            If the message is a non delivery report, then the dict will have the key 'Non-Delivery',
-                with value a dictionary of all message headers
-            If the message is a data message, then the dict will have key equal to the FILENAME of
-                the original file (as given by the Mex-FileName header), with value a dictionary with keys
-                data (containing the bytes value of the message) and headers (containing all headers)
-            
-        Side Effects
-        ----------
-        For each message in the inbox,
-        If the message is a non delivery report, then a file will be written to save_folder (if provided),
-            with filename 'Non delivery report: (MESH message ID of failed delivery).txt', and with
-            content 'Message not delivered. All known details below' followed by the full dictionary of
-            headers from the download response
-        If the message is a data message, then a file will be written to save_folder (if provided), with
-            filename set to the FILENAME of the original file (as given by the Mex-FileName header), and
-            content the (potentially reconstructed and/or decompressed) message body.
-        
-        Raises
-        ----------
-        MESHAuthenticationError
-            There was an authentication error accessing the inbox. Either the SSL certificate used is invalid,
-            or the client provided the wrong Mailbox ID, Password, or Shared Key.
-        MESHUnknownError
-            There was an unexpected return status from the MESH API when accessing the inbox
-        MESHDownloadErrors
-            There were errors during the download process. This exception has the attribute 'exceptions',
-            which contains a full list of messages which generated exceptions, along with the exception.
-            This is only raised after completion of all non-error downloads, and downloads which raise
-            an exception are not acknowledged to the MESH API.
-        
-        Examples
-        ----------
-        >>> client.check_and_download("C:/Test Folder/")
-        >>> for message in client.check_and_download():
-        >>>     print(message)
-        {'test.txt': b'test_message'}
-        {'test2.txt': b'test_message_2'}
-        """
-        if save_folder is None:
-            return self._check_download_generator(recursive)
-        else:
-            self._check_download_save(save_folder, recursive)
-
-    def _check_download_generator(self, recursive: bool) -> Generator[dict, None, None]:
-        """Internal only - generator to return for check_and_download"""
-        message_ids = self.check_inbox()
-        exceptions = []
-        if recursive:
-            repeat_needed = self.check_inbox_count() > 500
-        for message_id in message_ids:
-            try:
-                yield self.download_message(message_id, save_folder=None)
-            except Exception as e:
-                exceptions.append((message_id, e))
-            else:
-                self.ack_download_message(message_id)
-        # Force termination if there are enough messages failing to download that they fill the inbox
-        # Reduces risk of infinite loops
-        if len(exceptions) >= 500:
-            raise MESHDownloadErrors(exceptions)
-        if recursive and repeat_needed:
-            try:
-                for msg in self._check_download_generator(recursive=True):
-                    yield msg
-            except MESHDownloadErrors as e:
-                exceptions.extend(e.exceptions)
-        if exceptions:
-            raise MESHDownloadErrors(exceptions)
-
-    def _check_download_save(self, save_folder: str, recursive: bool) -> None:
-        """Internal only - function to save results for check_and_download"""
-        message_ids = self.check_inbox()
-        exceptions = []
-        if recursive:
-            repeat_needed = self.check_inbox_count() > 500
-        for message_id in message_ids:
-            try:
-                self.download_message(message_id, save_folder)
-            except Exception as e:
-                exceptions.append((message_id, e))
-            else:
-                self.ack_download_message(message_id)
-        # Force termination if there are enough messages failing to download that they fill the inbox
-        # Reduces risk of infinite loops
-        if len(exceptions) >= 500:
-            raise MESHDownloadErrors(exceptions)
-        if recursive and repeat_needed:
-            try:
-                self._check_download_save(save_folder, recursive=True)
-            except MESHDownloadErrors as e:
-                exceptions.extend(e.exceptions)
-        if exceptions:
-            raise MESHDownloadErrors(exceptions)
-
     def check_inbox(self) -> list:
         """
         Determine the MESH IDs of the contents of the inbox.
@@ -549,7 +429,7 @@ class MESHConnection:
         Returns
         ----------
         list
-            The MESH IDs of the messages in the inbox
+            The MESH IDs of the messages in the inbox (str)
         
         Raises
         ----------
@@ -618,6 +498,132 @@ class MESHConnection:
             raise MESHUnknownError
         return resp.json()["count"]
 
+    def check_and_download(
+        self, save_folder: str = None, recursive: bool = True
+    ) -> Union[Generator[dict, None, None], None]:
+        """
+        Download all messages in the inbox.
+        This will automatically handle reconstructing chunked messages, and automatically decompress any messages
+        which have Content-Encoding value of gzip.
+        WARNING: each downloaded message will be fully reconstructed and decompressed if needed. This may cause
+        issue for machines with very limited memory if there are very large files to download.
+        
+        If save_folder is provided, then downloaded files will be saved into that folder with their original filenames
+        (and non-delivery receipts will be saved there). This may cause issue if there are multiple files with the
+        same filename.
+        
+        If no save_folder is provided, then this function will return a generator which will yield each message in turn.
+        When the generator yields a message, it will send an acknowledgement to the MESH API for the previous
+        message; it is important that processing of the messages be complete and any required final outputs saved
+        before this - once acknowledged a message cannot be downloaded from MESH again.
+        
+        Parameters
+        ----------
+        save_folder : string, default = None
+            If provided, the folder to save all downloaded files to when this function is called. The function
+            will not yield intermediate results.
+
+            * For data files, the file will be saved in this folder with its original filename.
+            * For non-delivery reports, there will be a file created in the folder with filename
+              'Non delivery report: (MESH message ID of failed delivery).txt', and with
+              content 'Message not delivered. All known details below' followed by the full
+              dictionary of headers from the download response.
+              
+            If not provided, then this function will instead yield results as documented below.
+        recursive : boolean, default = True
+            If true, then this method will be called recursively so long as there are more than 500 messages in the inbox,
+            the maximum number of messages the MESH API will provide IDs for at once. If false, then only one call will be
+            made to retrieve inbox contents, and at most 500 messages will be downloaded.
+        
+        Yields
+        ----------
+        dict
+            Dictionary of details about the downloaded file.
+            
+            * filename (str): Filename of the original file (if provided).
+            * contents (bytes): Contents of the file (reconstructed and decompressed if necessary).
+            * headers (dict): Dictionary of headers returned by MESH on the initial download request.
+              For full details see the MESH API documentation.
+            * data (boolean): Indicates if this was a data file or a non-delivery report.
+        
+        Raises
+        ----------
+        MESHAuthenticationError
+            There was an authentication error accessing the inbox. Either the SSL certificate used is invalid,
+            or the client provided the wrong Mailbox ID, Password, or Shared Key.
+        MESHUnknownError
+            There was an unexpected return status from the MESH API when accessing the inbox
+        MESHDownloadErrors
+            There were errors during the download process. This exception has the attribute 'exceptions',
+            which contains a full list of messages which generated exceptions, along with the exception.
+            This is only raised after completion of all non-error downloads, and downloads which raise
+            an exception are not acknowledged to the MESH API.
+        
+        Examples
+        ----------
+        >>> client.check_and_download("C:/Test Folder/")
+        >>> for message in client.check_and_download():
+        >>>     print(message)
+        {'filename': 'test.txt', 'contents': b'test_message', 'headers': {'Mex-Filename': 'test.txt', ...}, data: True}
+        {'filename': 'test2.txt', 'contents': b'test_message_2', 'headers': {'Mex-Filename': 'test.txt', ...}, data: True}
+        {'filename': None, 'contents': b'', 'headers': {'LinkedMessageId': '1234567890', ...}, data: False}
+        """
+        if save_folder is None:
+            return self._check_download_generator(recursive)
+        else:
+            self._check_download_save(save_folder, recursive)
+
+    def _check_download_generator(self, recursive: bool) -> Generator[dict, None, None]:
+        """Internal only - generator to return for check_and_download"""
+        message_ids = self.check_inbox()
+        exceptions = []
+        if recursive:
+            repeat_needed = self.check_inbox_count() > 500
+        for message_id in message_ids:
+            try:
+                yield self.download_message(message_id, save_folder=None)
+            except Exception as e:
+                exceptions.append((message_id, e))
+            else:
+                self.ack_download_message(message_id)
+        # Force termination if there are enough messages failing to download that they fill the inbox
+        # Reduces risk of infinite loops
+        if len(exceptions) >= 500:
+            raise MESHDownloadErrors(exceptions)
+        if recursive and repeat_needed:
+            try:
+                for msg in self._check_download_generator(recursive=True):
+                    yield msg
+            except MESHDownloadErrors as e:
+                exceptions.extend(e.exceptions)
+        if exceptions:
+            raise MESHDownloadErrors(exceptions)
+
+    def _check_download_save(self, save_folder: str, recursive: bool) -> None:
+        """Internal only - function to save results for check_and_download"""
+        message_ids = self.check_inbox()
+        exceptions = []
+        if recursive:
+            repeat_needed = self.check_inbox_count() > 500
+        for message_id in message_ids:
+            try:
+                self.download_message(message_id, save_folder)
+            except Exception as e:
+                exceptions.append((message_id, e))
+            else:
+                self.ack_download_message(message_id)
+        # Force termination if there are enough messages failing to download that they fill the inbox
+        # Reduces risk of infinite loops
+        if len(exceptions) >= 500:
+            raise MESHDownloadErrors(exceptions)
+        if recursive and repeat_needed:
+            try:
+                self._check_download_save(save_folder, recursive=True)
+            except MESHDownloadErrors as e:
+                exceptions.extend(e.exceptions)
+        if exceptions:
+            raise MESHDownloadErrors(exceptions)
+
     def download_message(self, message_id: str, save_folder: str = None) -> dict:
         """
         Request a message from the MESH API.
@@ -630,27 +636,25 @@ class MESHConnection:
         ----------
         message_id : string
             The internal MESH ID of the message to download
-        save_folder : string
-            The folder to save the downloaded message to. If None (default), then the files are not saved.
+        save_folder : string, default = None
+            Optional, the folder to save the downloaded message to. If not provided, then the files are not saved.
+            
+            * For data files, the file will be saved in this folder with its original filename.
+            * For non-delivery reports, there will be a file created in the folder with filename
+              'Non delivery report: (MESH message ID of failed delivery).txt', and with
+              content 'Message not delivered. All known details below' followed by the full
+              dictionary of headers from the download response.
         
         Returns
         ----------
         dict
-            If the message is a non delivery report, then the dict will have the key 'Non-Delivery',
-                with value a dictionary of all message headers
-            If the message is a data message, then the dict will have key equal to the FILENAME of
-                the original file (as given by the Mex-FileName header), with value a dictionary with keys data
-                (holding the message contents) and headers (holding all headers from the original response)
+            Dictionary of details about the downloaded file.
             
-        Side Effects
-        ----------
-        If the message is a non delivery report, then a file will be written to save_folder (if provided),
-            with filename 'Non delivery report: (MESH message ID of failed delivery).txt', and with
-            content 'Message not delivered. All known details below' followed by the full dictionary of
-            headers from the download response
-        If the message is a data message, then a file will be written to save_folder (if provided), with
-            filename set to the FILENAME of the original file (as given by the Mex-FileName header), and
-            content the (potentially reconstructed and/or decompressed) message body.
+            * filename (str): Filename of the original file (if provided).
+            * contents (bytes): Contents of the file (reconstructed and decompressed if necessary).
+            * headers (dict): Dictionary of headers returned by MESH on the initial download request.
+              For full details see the MESH API documentation.
+            * datafile (boolean): Indicates if this was a data file or a non-delivery report.
         
         Raises
         ----------
@@ -667,9 +671,9 @@ class MESHConnection:
         Examples
         ----------
         >>> client.download_message("20200211115754892283_BC7B68", "C:/Test Folder/")
-        {'test.txt': b'test_message'}
+        {'filename': 'test.txt', 'contents': b'test_message', 'headers': {'Mex-Filename': 'test.txt', ...}, data: True}
         >>> client.download_message("20200211115754892283_BC7B69")
-        {'Non-Delivery': {(significant list of headers)}}
+        {'filename': None, 'contents': b'', 'headers': {'LinkedMessageId': '1234567890', ...}, data: False}
         """
         resp = r.get(
             url=f"{self.root_url}/messageexchange/{self.mailbox}/inbox/{message_id}",
@@ -693,7 +697,7 @@ class MESHConnection:
             core_data = resp.raw.data
             chunk_count = int(resp.headers["Mex-Chunk-Range"][2:])
             for chunk in range(2, chunk_count + 1):
-                core_data += self.download_message_chunk(message_id, chunk)
+                core_data += self._download_message_chunk(message_id, chunk)
         elif resp.status_code == 200:
             core_data = resp.raw.data
         else:
@@ -718,7 +722,12 @@ class MESHConnection:
                         "Message not delivered. All known details below\n"
                         + str(resp.headers)
                     )
-            return {"Non-Delivery": resp.headers}
+            return {
+                "filename": resp.headers.get("Mex-Filename"),
+                "contents": resp.content,
+                "headers": resp.headers,
+                "datafile": False,
+            }
 
         if ("Content-Encoding" in resp.headers) and (
             resp.headers["Content-Encoding"] == "gzip"
@@ -731,13 +740,16 @@ class MESHConnection:
             ) as file:
                 file.write(core_data)
         return {
-            resp.headers["Mex-Filename"]: {"data": core_data, "headers": resp.headers}
+            "filename": resp.headers["Mex-Filename"],
+            "contents": core_data,
+            "headers": resp.headers,
+            "datafile": True,
         }
         # CASES:
         # Message is complete and is a non delivery report
         #   log the non delivery report, create message in folder
 
-    def download_message_chunk(self, message_id: str, chunk_no: int) -> bytes:
+    def _download_message_chunk(self, message_id: str, chunk_no: int) -> bytes:
         """
         Request a message chunk from the MESH API.
         This is expected to only be called by the download_message method.
@@ -768,7 +780,7 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client.download_message_chunk("20200211115754892283_BC7B68", 1)
+        >>> client._download_message_chunk("20200211115754892283_BC7B68", 1)
         b'test_message'
         """
         resp = r.get(
@@ -804,10 +816,6 @@ class MESHConnection:
         ----------
         message_id : string
             The internal MESH ID of the downloaded message
-        
-        Returns
-        ----------
-        None
         
         Raises
         ----------
