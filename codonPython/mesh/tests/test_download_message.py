@@ -2,14 +2,12 @@ import pytest
 
 import mesh
 
-# TESTS:
-# 206
-# 206 unzip
-
 
 @pytest.fixture
 def base_params():
-    return {"message_id": "1"}
+    return {
+        "message_id": "1",
+    }
 
 
 def test_DownloadMessage_SimpleFileReturnsCorrect(
@@ -26,18 +24,18 @@ def test_DownloadMessage_SimpleFileReturnsCorrect(
         text="test",
     )
     assert mesh_connection.download_message(**base_params) == {
-        "test.txt": {
-            "data": b"test",
-            "headers": {"Mex-FileName": "test.txt", "Mex-MessageType": "DATA"},
-        }
+        "filename": "test.txt",
+        "content": b"test",
+        "headers": {"Mex-FileName": "test.txt", "Mex-MessageType": "DATA",},
+        "data": True,
     }
     p = tmpdir.mkdir("save")
     base_params["save_folder"] = str(p)
     assert mesh_connection.download_message(**base_params) == {
         "filename": "test.txt",
-        "contents": b"test",
-        "headers": {"Mex-FileName": "test.txt", "Mex-MessageType": "DATA"},
-        "datafile": True,
+        "content": b"test",
+        "headers": {"Mex-FileName": "test.txt", "Mex-MessageType": "DATA",},
+        "data": True,
     }
     assert p.join("test.txt").read() == "test"
 
@@ -64,25 +62,25 @@ def test_DownloadMessage_ZipFileReturnsCorrect(
     )
     assert mesh_connection.download_message(**base_params) == {
         "filename": "test.txt",
-        "contents": b"test",
+        "data": b"test",
         "headers": {
             "Mex-FileName": "test.txt",
-            "Mex-MessageType": "DATA",
             "Content-Encoding": "gzip",
+            "Mex-MessageType": "DATA",
         },
-        "datafile": True,
+        "data": True,
     }
     p = tmpdir.mkdir("save")
     base_params["save_folder"] = str(p)
     assert mesh_connection.download_message(**base_params) == {
-        "test.txt": {
-            "data": b"test",
-            "headers": {
-                "Mex-FileName": "test.txt",
-                "Content-Encoding": "gzip",
-                "Mex-MessageType": "DATA",
-            },
-        }
+        "filename": "test.txt",
+        "data": b"test",
+        "headers": {
+            "Mex-FileName": "test.txt",
+            "Content-Encoding": "gzip",
+            "Mex-MessageType": "DATA",
+        },
+        "data": True,
     }
     assert p.join("test.txt").read() == "test"
 
@@ -106,17 +104,17 @@ def test_DownloadMessage_NonDeliveryReturnsCorrect(
     )
     assert mesh_connection.download_message(**base_params) == {
         "filename": None,
-        "content": b"",
+        "content": None,
         "headers": headers,
-        "datafile": False,
+        "data": False,
     }
     p = tmpdir.mkdir("save")
     base_params["save_folder"] = str(p)
     assert mesh_connection.download_message(**base_params) == {
         "filename": None,
-        "content": b"",
+        "content": None,
         "headers": headers,
-        "datafile": False,
+        "data": False,
     }
     assert p.join(
         "Non delivery report: 1.txt"
@@ -154,25 +152,25 @@ def test_DownloadMessage_ChunkedFileReturnsCorrect(
     )
     assert mesh_connection.download_message(**base_params) == {
         "filename": "test.txt",
-        "content": b"test-test2-test3",
+        "data": b"test-test2-test3",
         "headers": {
             "Mex-FileName": "test.txt",
             "Mex-MessageType": "DATA",
             "Mex-Chunk-Range": "1:3",
         },
-        "datafile": True,
+        "data": True,
     }
     p = tmpdir.mkdir("save")
     base_params["save_folder"] = str(p)
     assert mesh_connection.download_message(**base_params) == {
         "filename": "test.txt",
-        "content": b"test-test2-test3",
+        "data": b"test-test2-test3",
         "headers": {
             "Mex-FileName": "test.txt",
             "Mex-MessageType": "DATA",
             "Mex-Chunk-Range": "1:3",
         },
-        "datafile": True,
+        "data": True,
     }
     assert p.join("test.txt").read() == "test-test2-test3"
 
@@ -210,27 +208,27 @@ def test_DownloadMessage_ChunkedZipFileReturnsCorrect(
     )
     assert mesh_connection.download_message(**base_params) == {
         "filename": "test.txt",
-        "content": b"test-test2-test3",
+        "data": b"test-test2-test3",
         "headers": {
             "Mex-FileName": "test.txt",
             "Mex-MessageType": "DATA",
             "Mex-Chunk-Range": "1:3",
             "Content-Encoding": "gzip",
         },
-        "datafile": True,
+        "data": True,
     }
     p = tmpdir.mkdir("save")
     base_params["save_folder"] = str(p)
     assert mesh_connection.download_message(**base_params) == {
         "filename": "test.txt",
-        "content": b"test-test2-test3",
+        "data": b"test-test2-test3",
         "headers": {
             "Mex-FileName": "test.txt",
             "Mex-MessageType": "DATA",
             "Mex-Chunk-Range": "1:3",
             "Content-Encoding": "gzip",
         },
-        "datafile": True,
+        "data": True,
     }
     assert p.join("test.txt").read() == "test-test2-test3"
 
