@@ -73,7 +73,7 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client.check_authentication()
+        >>> client.check_authentication() #doctest: +SKIP
         True
         """
         resp = r.post(
@@ -154,7 +154,7 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client.send_file("TEST", 'c:/test/test.txt', 'test_flow')
+        >>> client.send_file("TEST", 'c:/test/test.txt', 'test_flow') #doctest: +SKIP
         {'messageID': '20200211115928515346_9359E2'}
         """
         with open(message_location, "rb") as file:
@@ -233,7 +233,7 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client.send_message("TEST", b'test', 'test.txt', 'test_flow')
+        >>> client.send_message("TEST", b'test', 'test.txt', 'test_flow') #doctest: +SKIP
         {'messageID': '20200211115928515346_9359E2'}
         """
         checksum = md5(message).hexdigest()
@@ -343,7 +343,7 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client._send_message_chunk("20200211115754892283_BC7B68", b'test', 2)
+        >>> client._send_message_chunk("20200211115754892283_BC7B68", b'test', 2) #doctest: +SKIP
         """
         headers = {
             "Authorization": generate_authorization(
@@ -394,7 +394,7 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client.check_message_status(test)
+        >>> client.check_message_status(test) #doctest: +SKIP
         {"statusSuccess": ...}
         """
         resp = r.get(
@@ -441,7 +441,7 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client.check_inbox()
+        >>> client.check_inbox() #doctest: +SKIP
         ["20200211115754892283_BC7B68", "20200211115928515346_9359E2"]
         """
         resp = r.get(
@@ -479,7 +479,7 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client.check_inbox_count()
+        >>> client.check_inbox_count() #doctest: +SKIP
         2
         """
         resp = r.get(
@@ -561,9 +561,9 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client.check_and_download("C:/Test Folder/")
-        >>> for message in client.check_and_download():
-        >>>     print(message)
+        >>> client.check_and_download("C:/Test Folder/") #doctest: +SKIP
+        >>> for message in client.check_and_download(): #doctest: +SKIP
+        >>>     print(message) #doctest: +SKIP
         {'filename': 'test.txt', 'contents': b'test_message', 'headers': {'Mex-Filename': 'test.txt', ...}, data: True}
         {'filename': 'test2.txt', 'contents': b'test_message_2', 'headers': {'Mex-Filename': 'test.txt', ...}, data: True}
         {'filename': None, 'contents': b'', 'headers': {'LinkedMessageId': '1234567890', ...}, data: False}
@@ -670,9 +670,9 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client.download_message("20200211115754892283_BC7B68", "C:/Test Folder/")
+        >>> client.download_message("20200211115754892283_BC7B68", "C:/Test Folder/") #doctest: +SKIP
         {'filename': 'test.txt', 'contents': b'test_message', 'headers': {'Mex-Filename': 'test.txt', ...}, data: True}
-        >>> client.download_message("20200211115754892283_BC7B69")
+        >>> client.download_message("20200211115754892283_BC7B69") #doctest: +SKIP
         {'filename': None, 'contents': b'', 'headers': {'LinkedMessageId': '1234567890', ...}, data: False}
         """
         resp = r.get(
@@ -745,9 +745,6 @@ class MESHConnection:
             "headers": resp.headers,
             "datafile": True,
         }
-        # CASES:
-        # Message is complete and is a non delivery report
-        #   log the non delivery report, create message in folder
 
     def _download_message_chunk(self, message_id: str, chunk_no: int) -> bytes:
         """
@@ -780,7 +777,7 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client._download_message_chunk("20200211115754892283_BC7B68", 1)
+        >>> client._download_message_chunk("20200211115754892283_BC7B68", 1) #doctest: +SKIP
         b'test_message'
         """
         resp = r.get(
@@ -827,7 +824,7 @@ class MESHConnection:
         
         Examples
         ----------
-        >>> client.ack_download_message("20200211115754892283_BC7B68")
+        >>> client.ack_download_message("20200211115754892283_BC7B68") #doctest: +SKIP
         """
         resp = r.put(
             url=f"{self.root_url}/messageexchange/{self.mailbox}/inbox/{message_id}/status/acknowledged",
@@ -865,9 +862,9 @@ def generate_authorization(mailbox: str, password: str, api_shared_key: str) -> 
     
     Examples
     ----------
-    >>> generate_authorization("TEST_BOX", "TEST_PW", "TEST_KEY")
+    >>> generate_authorization("TEST_BOX", "TEST_PW", "TEST_KEY") #doctest: +SKIP
     "NHSMESH TEST_BOX:ccd54b96-ee41-4d34-9700-7f9ec63d0720:1:202002120857:7632c7e908147f51f3d544209621f50126903779071417236428e47ea047872c"
-    >>> generate_authorization("NEW_BOX", "NEW_PW", "TEST_KEY")
+    >>> generate_authorization("NEW_BOX", "NEW_PW", "TEST_KEY") #doctest: +SKIP
     "NHSMESH NEW_BOX:662c4ffa-c85c-4858-bae8-7327e09aeeb5:1:202002120858:7f1ef837210936a3125d24ae9d4e0e972079ed4a9ac6a4bf0b7bddb11cf20d95"
     """
     nonce = uuid4()
